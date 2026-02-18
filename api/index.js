@@ -6,54 +6,61 @@ const app = express();
 app.use(cors());
 
 app.get('/api/online', async (req, res) => {
-    const { title, year } = req.query;
+    // Отримуємо назву та чистимо її від зайвих пробілів
+    let { title } = req.query;
+    if (!title) return res.json([]);
+    
+    title = title.trim();
     let results = [];
 
-    // Список запитів до різних баз
+    // Набір запитів до різних баз (використовуємо робочі дзеркала)
     const sources = [
-        // 1. VideoCDN
-        axios.get(`https://videocdn.tv/api/short?api_token=3i40v5i7z6CcU4SHe627S74y704mIu62&title=${encodeURIComponent(title)}`, { timeout: 5000 }).catch(() => null),
+        // 1. VideoCDN (через перевірений токен)
+        axios.get(`https://videocdn.tv/api/short?api_token=3i40v5i7z6CcU4SHe627S74y704mIu62&title=${encodeURIComponent(title)}`, { timeout: 4000 }).catch(() => null),
         
-        // 2. Alloha (Часто має те, чого немає в інших)
-        axios.get(`https://api.alloha.tv/?token=044417740f9350436d7a71888e5d61&name=${encodeURIComponent(title)}`, { timeout: 5000 }).catch(() => null),
+        // 2. Collaps (дуже потужний балансер)
+        axios.get(`https://api.bhcesh.me/api/short?api_token=ed495096-787f-4b0d-9b57-61c1653557e0&title=${encodeURIComponent(title)}`, { timeout: 4000 }).catch(() => null),
         
-        // 3. KinoBase (Український сегмент)
-        axios.get(`https://kinobase.org/api/v1/search?title=${encodeURIComponent(title)}`, { timeout: 5000 }).catch(() => null)
+        // 3. Alloha
+        axios.get(`https://api.alloha.tv/?token=044417740f9350436d7a71888e5d61&name=${encodeURIComponent(title)}`, { timeout: 4000 }).catch(() => null)
     ];
 
     try {
         const responses = await Promise.all(sources);
 
         // Обробка VideoCDN
-        if (responses[0] && responses[0].data && responses[0].data.data) {
+        if (responses[0]?.data?.data?.length) {
             responses[0].data.data.forEach(item => {
                 results.push({ title: item.title, file: item.iframe_src, quality: '1080p', info: 'VCDN' });
             });
         }
 
+        // Обробка Collaps
+        if (responses[1]?.data?.length) {
+            responses[1].data.forEach(item => {
+                results.push({ title: item.title, file: item.iframe_src, quality: '720p/1080p', info: 'Collaps' });
+            });
+        }
+
         // Обробка Alloha
-        if (responses[1] && responses[1].data && responses[1].data.data) {
+        if (responses[2]?.data?.data?.iframe) {
             results.push({ 
-                title: responses[1].data.data.name, 
-                file: responses[1].data.data.iframe, 
+                title: responses[2].data.data.name || title, 
+                file: responses[2].data.data.iframe, 
                 quality: 'HD', 
-                info: 'ALLOHA' 
+                info: 'Alloha' 
             });
         }
 
-        // Обробка KinoBase
-        if (responses[2] && responses[2].data) {
-            responses[2].data.forEach(item => {
-                results.push({ title: item.title, file: item.url, quality: '720p', info: 'KBase' });
-            });
-        }
+        // Видаляємо дублікати за посиланням
+        const uniqueResults = results.filter((v, i, a) => a.findIndex(t => (t.file === v.file)) === i);
 
-        res.json(results);
+        res.json(uniqueResults);
     } catch (e) {
-        res.status(500).json({ error: "Search failed" });
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
-app.get('/', (req, res) => { res.send('Kozak Multi-API Online'); });
+app.get('/', (req, res) => { res.send('Kozak Ultra-API is Online'); });
 
 module.exports = app;
